@@ -532,6 +532,7 @@
   // 사장님 결제 안내: 등록 신청은 누구나 가능하고, 유선 결제 확인 후 관리자가 수락하면 게시됨
   function paidNotice(u) {
     if (Store.hasPlan(u)) return `<p class="paid-box ok"><b>${PLAN_LABEL[u.plan]}</b> 이용 중 · ${esc(u.paidUntil)}까지 · 모집글이 승인 없이 바로 게시됩니다.</p>`;
+    if (Store.autoPost()) return '<p class="paid-box ok">지금은 모집글이 관리자 승인 없이 바로 게시됩니다.</p>';
     return Store.isPaid(u)
       ? `<p class="paid-box ok">결제 확인됨 · 이용 기간 <b>${esc(u.paidUntil)}</b>까지</p>`
       : `<div class="paid-box">등록 신청한 모집글은 <b>입금 확인 후</b> 관리자가 승인하면 게시됩니다.${u.paidUntil ? ` (이용 기간이 ${esc(u.paidUntil)}에 끝났습니다.)` : ''}${bankHtml()}</div>`;
@@ -618,8 +619,8 @@
     return `
     <section class="container section form-page wide">
       <a class="back" href="#/${u.role === 'admin' ? 'admin' : 'my'}">← 돌아가기</a>
-      <h1>${c ? '모집글 수정' : Store.hasPlan(u) ? '모집글 등록' : '모집글 등록 신청'}</h1>
-      ${c ? '' : Store.hasPlan(u) ? `<p class="sub"><b>${PLAN_LABEL[u.plan]}</b> 요금제 이용 중이라 등록하면 바로 게시됩니다.</p>` : '<p class="sub">등록 신청 후 입금 계좌를 안내해 드리며, 입금이 확인되면 관리자가 승인해 게시됩니다.</p>'}
+      <h1>${c ? '모집글 수정' : Store.postsDirect(u) ? '모집글 등록' : '모집글 등록 신청'}</h1>
+      ${c ? '' : Store.hasPlan(u) ? `<p class="sub"><b>${PLAN_LABEL[u.plan]}</b> 요금제 이용 중이라 등록하면 바로 게시됩니다.</p>` : Store.postsDirect(u) ? '<p class="sub">등록하면 관리자 승인 없이 바로 게시됩니다.</p>' : '<p class="sub">등록 신청 후 입금 계좌를 안내해 드리며, 입금이 확인되면 관리자가 승인해 게시됩니다.</p>'}
       <form data-form="post" data-id="${c ? c.id : ''}" class="form" novalidate>
         <label>매장명 <i>*</i><input name="storeName" value="${c ? v('storeName') : esc(u.storeName || '')}" placeholder="매장명을 입력해 주세요"></label>
         <label>체험 메뉴 <i>*</i><input name="menu" value="${v('menu')}" placeholder="예: 황금치킨 + 수제맥주"></label>
@@ -646,7 +647,7 @@
         <label>리뷰 조건 <i>*</i><textarea name="conditions" rows="4" placeholder="예: 매장 방문 후 릴스 1건 업로드">${v('conditions')}</textarea></label>
         <label>대표 이미지 (1장) <i>*</i><input type="file" id="post-image" accept="image/*"></label>
         <div id="image-preview" class="image-preview">${c ? `<img src="${v('image')}" alt="현재 대표 이미지">` : ''}</div>
-        <button class="btn btn-dark btn-block btn-lg">${c ? (c.approval === 'rejected' && u.role !== 'admin' ? '수정하고 다시 신청하기' : '수정 내용 저장') : Store.hasPlan(u) ? '등록하기' : '등록 신청하기'}</button>
+        <button class="btn btn-dark btn-block btn-lg">${c ? (c.approval === 'rejected' && u.role !== 'admin' ? '수정하고 다시 신청하기' : '수정 내용 저장') : Store.postsDirect(u) ? '등록하기' : '등록 신청하기'}</button>
         ${c ? `<button type="button" class="btn btn-soft btn-block danger" data-action="delete-campaign" data-id="${c.id}">이 모집글 삭제</button>` : ''}
       </form>
     </section>`;
@@ -710,6 +711,22 @@
         `<button type="button" class="pill ${state.userRole === k ? 'on' : ''}" data-action="user-role" data-role="${k}">${l} ${k === '전체' ? all.length : all.filter(u => u.role === k).length}</button>`).join('')}</div>`;
   }
 
+  // 모집글 승인 방식: 승인받기(기본) / 승인 없이 바로 게시. 누르면 바로 반영
+  function approvalModePanel() {
+    const auto = Store.autoPost();
+    return `<div class="trial-panel approval-mode">
+      <p><b>사장님 모집글 승인 방식</b> <span class="badge ${auto ? 'badge-ok' : 'badge-wait'}">${auto ? '승인 없이 바로 게시' : '관리자 승인 후 게시'}</span></p>
+      <div class="trial-actions">
+        <button type="button" class="btn btn-sm ${auto ? 'btn-soft' : 'btn-dark'}" data-action="set-auto-post" data-on="">승인받기</button>
+        <button type="button" class="btn btn-sm ${auto ? 'btn-dark' : 'btn-soft'}" data-action="set-auto-post" data-on="on">승인 안 받기 (바로 게시)</button>
+      </div>
+      <p class="note">${auto
+        ? '사장님이 등록한 모집글이 승인 없이 바로 사이트에 게시됩니다. 문제가 있는 글은 아래 목록에서 "게시 취소(반려)"로 내릴 수 있습니다.'
+        : '사장님이 등록한 모집글은 승인 대기로 들어오고, 아래 목록에서 수락해야 게시됩니다. (요금제 이용 중인 사장님은 승인 없이 바로 게시)'}
+        바꾼 방식은 이후 새로 등록하는 글부터 적용됩니다.</p>
+    </div>`;
+  }
+
   function admin(tab) {
     if (tab) state.adminTab = tab;
     const pending = Store.campaigns().filter(c => c.approval === 'pending').length;
@@ -722,7 +739,7 @@
         <thead><tr><th>유형</th>${sortHead('name', '이름')}<th>아이디</th><th>연락처</th><th>SNS 채널 / 매장명</th>${sortHead('count', '공고 참여 · 등록')}${sortHead('createdAt', '가입일')}<th>요금제 (계좌이체 확인 후 지정)</th><th></th></tr></thead>
         <tbody id="user-rows">${userRows()}</tbody></table></div>`;
     } else if (state.adminTab === 'campaigns') {
-      body = `<div class="table-wrap"><table>
+      body = `${approvalModePanel()}<div class="table-wrap"><table>
         <thead><tr><th>매장명</th><th>사장님</th><th>휴대폰</th><th>상태</th><th>마감일</th><th>신청</th><th>선정</th><th></th></tr></thead>
         <tbody>${Store.campaigns().sort((a, b) => (b.approval === 'pending') - (a.approval === 'pending')).map(c => `<tr>
           <td><a href="#/campaign/${c.id}">${esc(c.storeName)}</a></td>
@@ -1371,6 +1388,15 @@
       toast(accept ? '수락했습니다. 사이트에 게시되었습니다.' : '반려했습니다.');
       refresh();
     },
+    'set-auto-post': async el => {
+      if (!isAdmin()) return toast('권한이 없습니다.');
+      const on = el.dataset.on === 'on';
+      if (on === Store.autoPost()) return;
+      if (!confirm(on ? '사장님 모집글을 승인 없이 바로 게시할까요?\n이후 등록되는 글은 등록 즉시 사이트에 보입니다.' : '사장님 모집글을 다시 관리자 승인 후 게시하도록 바꿀까요?')) return;
+      await Store.saveSettings({ ownerAutoPost: on ? 'on' : '' });
+      toast(on ? '이제 모집글이 승인 없이 바로 게시됩니다.' : '이제 모집글은 관리자 승인 후 게시됩니다.');
+      refresh();
+    },
     'toggle-campaign': async el => {
       if (!isAdmin()) return;
       const c = Store.campaign(el.dataset.id);
@@ -1706,7 +1732,7 @@
     // 모집글 등록 버튼: 요금제가 없는 사장님에게는 이동을 막고 요금제·입금 안내를 먼저 보여 줌
     if (el.dataset.action === 'new-post') {
       const u = me();
-      if (u && u.role === 'owner' && !Store.hasPlan(u)) { e.preventDefault(); showPlanModal(); }
+      if (u && u.role === 'owner' && !Store.postsDirect(u)) { e.preventDefault(); showPlanModal(); }
       return;
     }
     run(() => actions[el.dataset.action](el));

@@ -142,6 +142,10 @@
     isPaid(u) { return !!(u && u.paidUntil && u.paidUntil >= today()); },
     // 요금제(Standard/Pro)가 있고 이용 기간이 남은 사장님: 모집글이 승인 없이 바로 게시됨
     hasPlan(u) { return !!(u && u.plan && this.isPaid(u)); },
+    // 관리자가 "승인 없이 바로 게시"를 켜 두었는지
+    autoPost() { return this.settings().ownerAutoPost === 'on'; },
+    // 이 사장님의 새 모집글이 승인 없이 바로 게시되는지 (요금제 이용 중이거나 바로 게시 모드)
+    postsDirect(u) { return !!(u && u.role === 'owner' && (this.hasPlan(u) || this.autoPost())); },
     async setPlan(id, plan, until) { ok(await sb.rpc('admin_set_plan', { target: id, new_plan: plan || null, until: until || null })); return done(); },
     async setPaid(id, until) { ok(await sb.rpc('admin_set_paid', { target: id, until: until || null })); return done(); },
     async updateSns(links) { ok(await sb.rpc('update_my_sns', { links })); return done(); },
@@ -196,7 +200,7 @@
         if (old.image !== row.image) await removeFile(old.image);
       } else {
         row.owner_id = cache.meId;
-        if (this.hasPlan(this.currentUser())) row.approval = 'approved'; // 요금제 사장님은 바로 게시
+        if (this.postsDirect(this.currentUser())) row.approval = 'approved'; // 요금제 사장님·바로 게시 모드는 바로 게시
         saved = ok(await sb.from('campaigns').insert(row).select().single());
       }
       if (data.reservePhone) ok(await sb.from('campaign_contacts').upsert({ campaign_id: saved.id, phone: data.reservePhone }));
