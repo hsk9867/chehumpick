@@ -52,6 +52,8 @@ window.CHEHUMPICK_DEFAULTS = {
   ownerSignupAutoApprove: 'on',
   // 모집글 승인 방식: 'on'이면 사장님 모집글이 관리자 승인 없이 바로 게시됨. 관리자 페이지 > 모집글 탭에서 바꿉니다.
   ownerAutoPost: '',
+  // 사장님 유료 이용 방식: 'on'이면 이용 중인 요금제가 있어야 새 모집글을 등록할 수 있습니다.
+  ownerPaidMode: '',
   trialStart: '',
   trialUntil: '',
   trialNoticeTitle: '무료 체험\n기간 안내',

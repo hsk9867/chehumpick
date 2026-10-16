@@ -118,6 +118,27 @@
   }
   const bankHtml = () => `<div class="bank-info">${nl2br(S.bankInfo)}</div><p class="bank-notice">${nl2br(S.bankNotice)}</p>`;
 
+  // 유료 운영 중 요금제가 없는 사장님에게 보여 주는 이용 안내
+  function showPlanModal() {
+    closeModal();
+    const el = document.createElement('div');
+    el.className = 'modal';
+    el.innerHTML = `<div class="modal-box modal-box-wide" role="dialog" aria-modal="true" aria-labelledby="plan-modal-title">
+      <button type="button" class="modal-x" data-action="close-modal" aria-label="닫기">✕</button>
+      <h2 id="plan-modal-title">요금제 안내</h2>
+      <p class="menu">현재 유료 운영 중입니다. 모집글을 등록하려면 이용 중인 요금제가 필요합니다.</p>
+      <div class="plan-pick">
+        <div class="plan-pick-item"><b>Standard</b><span>인플루언서 최대 5명 관리</span><em>월 39,000원</em><small>정상가 49,000원</small></div>
+        <div class="plan-pick-item pro"><b>Pro</b><span>인플루언서 최대 10명 관리</span><em>월 49,000원</em><small>정상가 69,000원</small></div>
+      </div>
+      <h3 class="modal-sub">입금 안내</h3>
+      ${bankHtml()}
+      <a class="btn btn-dark btn-block btn-lg plan-kakao" href="https://pf.kakao.com/_xdGxexiX/chat" target="_blank" rel="noopener">카카오톡으로 결제 문의</a>
+    </div>`;
+    document.body.appendChild(el);
+    el.querySelector('button').focus();
+  }
+
   let toastTimer;
   function toast(msg) {
     toastEl.textContent = msg;
@@ -250,7 +271,7 @@
           <p>${nl2br(S.heroSub)}</p>
           <div class="hero-actions">
             <a class="btn btn-yellow btn-lg" href="#/campaigns">${esc(S.heroButton)} ${ICON.arrow}</a>
-            ${owner ? '<a class="btn btn-soft btn-lg" href="#/post/new">+ 모집글 등록 신청</a>' : ''}
+            ${owner ? '<a class="btn btn-soft btn-lg" href="#/post/new" data-action="new-post">+ 모집글 등록 신청</a>' : ''}
           </div>
         </div>
         <p class="hand hero-note">${nl2br(S.heroNote)}</p>
@@ -271,7 +292,7 @@
       </div>
       <div class="cta cta-pink">
         <div><h3>${esc(S.ctaOwnerTitle)}</h3><p>${nl2br(S.ctaOwnerText)}</p>
-        ${owner ? `<a class="btn btn-pink" href="#/post/new">모집글 등록 신청하기 ${ICON.arrow}</a>`
+        ${owner ? `<a class="btn btn-pink" href="#/post/new" data-action="new-post">모집글 등록 신청하기 ${ICON.arrow}</a>`
           : `<a class="btn btn-pink" href="#/owner">${esc(S.ctaOwnerButton)} ${ICON.arrow}</a>`}</div>
         <span class="cta-emoji" aria-hidden="true">👩‍🍳</span>
       </div>
@@ -583,11 +604,11 @@
     };
     return `
     <section class="container section">
-      <div class="section-head"><h1>사장님 마이페이지</h1><span class="head-links"><a class="more" href="#/account">내 정보 · 비밀번호 변경</a><a class="btn btn-dark" href="#/post/new">+ 모집글 등록 신청</a></span></div>
+      <div class="section-head"><h1>사장님 마이페이지</h1><span class="head-links"><a class="more" href="#/account">내 정보 · 비밀번호 변경</a><a class="btn btn-dark" href="#/post/new" data-action="new-post">+ 모집글 등록 신청</a></span></div>
       ${paidNotice(u)}
       <p class="sub">${esc(u.storeName || u.name)} · 등록한 모집글 ${mine.length}건</p>
       ${mine.length > 1 ? `<h3 class="report-title">전체 진행 현황</h3>${progressStats(allApps)}` : ''}
-      ${mine.length ? mine.map(item).join('') : '<p class="empty">아직 등록한 모집글이 없습니다.<br><a href="#/post/new">첫 체험단 모집글 등록 신청하기</a></p>'}
+      ${mine.length ? mine.map(item).join('') : '<p class="empty">아직 등록한 모집글이 없습니다.<br><a href="#/post/new" data-action="new-post">첫 체험단 모집글 등록 신청하기</a></p>'}
     </section>`;
   }
 
@@ -733,6 +754,20 @@
     </div>`;
   }
 
+  // 사장님 모집글 무료/유료 운영 전환. 유료 전환 시 무료체험 공지도 함께 종료합니다.
+  function paymentModePanel() {
+    const paid = Store.paidMode();
+    return `<div class="trial-panel approval-mode">
+      <p><b>사장님 서비스 이용 방식</b> <span class="badge ${paid ? 'badge-wait' : 'badge-ok'}">${paid ? '유료 요금제 적용 중' : '무료 운영 중'}</span></p>
+      <div class="trial-actions">
+        <button type="button" class="btn btn-sm ${paid ? 'btn-soft' : 'btn-dark'}" data-action="set-paid-mode" data-on="${paid ? '' : 'on'}">${paid ? '무료 운영으로 전환' : '유료로 전환'}</button>
+      </div>
+      <p class="note">${paid
+        ? '유효한 요금제가 있는 사장님만 새 모집글을 등록할 수 있습니다. 기존 모집글은 그대로 유지됩니다.'
+        : '현재 모든 승인된 사장님이 요금제 없이 새 모집글을 등록할 수 있습니다. 유료로 전환하면 요금제가 없는 사장님에게 Standard·Pro 안내가 표시됩니다.'}</p>
+    </div>`;
+  }
+
   function admin(tab) {
     if (tab) state.adminTab = tab;
     const pending = Store.campaigns().filter(c => c.approval === 'pending').length;
@@ -746,7 +781,7 @@
         <thead><tr><th>유형</th><th>가입 상태</th>${sortHead('name', '이름')}<th>아이디</th><th>연락처</th><th>SNS 채널 / 매장명</th>${sortHead('count', '공고 참여 · 등록')}${sortHead('createdAt', '가입일')}<th>요금제 (계좌이체 확인 후 지정)</th><th></th></tr></thead>
         <tbody id="user-rows">${userRows()}</tbody></table></div>`;
     } else if (state.adminTab === 'campaigns') {
-      body = `${approvalModePanel()}<div class="table-wrap"><table>
+      body = `${paymentModePanel()}${approvalModePanel()}<div class="table-wrap"><table>
         <thead><tr><th>매장명</th><th>사장님</th><th>휴대폰</th><th>상태</th><th>마감일</th><th>신청</th><th>선정</th><th></th></tr></thead>
         <tbody>${Store.campaigns().sort((a, b) => (b.approval === 'pending') - (a.approval === 'pending')).map(c => `<tr>
           <td><a href="#/campaign/${c.id}">${esc(c.storeName)}</a></td>
@@ -796,7 +831,7 @@
   function ownerLanding() {
     const u = Store.currentUser();
     const cta = u && u.role === 'owner'
-      ? `<a class="btn btn-dark btn-lg" href="#/post/new">모집글 등록하기 ${ICON.arrow}</a>`
+      ? `<a class="btn btn-dark btn-lg" href="#/post/new" data-action="new-post">모집글 등록하기 ${ICON.arrow}</a>`
       : `<a class="btn btn-dark btn-lg" href="#/signup/owner">사장님으로 가입하기 ${ICON.arrow}</a>`;
     return `
     <section class="hero hero-md" style="background-image:url('${media('ownerBg')}')">
@@ -1241,6 +1276,14 @@
     if (u.role === 'admin') { go('/admin'); return ''; }
     return u.role === 'owner' ? ownerMy(u) : influencerMy(u);
   });
+  const newPost = guard(['owner'], () => {
+    if (!Store.canCreateCampaign(Store.currentUser())) {
+      go('/my');
+      window.setTimeout(showPlanModal, 0);
+      return '';
+    }
+    return postForm();
+  });
 
   const routes = [
     [/^\/$/, home],
@@ -1249,7 +1292,7 @@
     [/^\/login$/, login],
     [/^\/signup(?:\/(influencer|owner))?$/, signup],
     [/^\/my$/, my],
-    [/^\/post\/new$/, guard(['owner'], () => postForm())],
+    [/^\/post\/new$/, newPost],
     [/^\/post\/([\w-]+)\/edit$/, guard(['owner', 'admin'], postForm)],
     [/^\/admin(?:\/(apps|campaigns|users|site))?$/, guard(['admin'], admin)],
     [/^\/ads$/, adsPage],
@@ -1402,6 +1445,19 @@
       if (!confirm(on ? '사장님 모집글을 승인 없이 바로 게시할까요?\n이후 등록되는 글은 등록 즉시 사이트에 보입니다.' : '사장님 모집글을 다시 관리자 승인 후 게시하도록 바꿀까요?')) return;
       await Store.saveSettings({ ownerAutoPost: on ? 'on' : '' });
       toast(on ? '이제 모집글이 승인 없이 바로 게시됩니다.' : '이제 모집글은 관리자 승인 후 게시됩니다.');
+      refresh();
+    },
+    'set-paid-mode': async el => {
+      if (!isAdmin()) return toast('권한이 없습니다.');
+      const on = el.dataset.on === 'on';
+      if (on === Store.paidMode()) return;
+      if (!confirm(on
+        ? '유료 운영으로 전환할까요?\n무료체험 공지가 종료되고, 요금제가 없는 사장님은 새 모집글을 등록할 수 없습니다.'
+        : '무료 운영으로 전환할까요?\n모든 승인된 사장님이 요금제 없이 새 모집글을 등록할 수 있습니다.')) return;
+      await Store.saveSettings(on
+        ? { ownerPaidMode: 'on', trialStart: '', trialUntil: '' }
+        : { ownerPaidMode: '' });
+      toast(on ? '유료 운영으로 전환했습니다.' : '무료 운영으로 전환했습니다.');
       refresh();
     },
     'set-owner-signup-auto-approve': async el => {
@@ -1765,6 +1821,14 @@
   document.addEventListener('click', e => {
     const el = e.target.closest('[data-action]');
     if (!el) return;
+    if (el.dataset.action === 'new-post') {
+      const u = me();
+      if (u && u.role === 'owner' && !Store.canCreateCampaign(u)) {
+        e.preventDefault();
+        showPlanModal();
+      }
+      return;
+    }
     run(() => actions[el.dataset.action](el));
   });
   document.addEventListener('submit', e => {

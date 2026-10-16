@@ -160,8 +160,12 @@
     hasPlan(u) { return !!(u && u.plan && this.isPaid(u)); },
     // 관리자가 "승인 없이 바로 게시"를 켜 두었는지
     autoPost() { return this.settings().ownerAutoPost === 'on'; },
+    // 관리자가 사장님 모집글 등록을 유료 요금제 이용자에게만 열어 두었는지
+    paidMode() { return this.settings().ownerPaidMode === 'on'; },
     // 관리자가 새 사장님 계정을 가입 즉시 승인하도록 켜 두었는지
     ownerSignupAutoApprove() { return this.settings().ownerSignupAutoApprove === 'on'; },
+    // 무료 운영 중이거나 유효한 요금제를 이용 중인 사장님만 새 모집글을 등록할 수 있음
+    canCreateCampaign(u) { return !!(u && u.role === 'owner' && (!this.paidMode() || this.hasPlan(u))); },
     // 이 사장님의 새 모집글이 승인 없이 바로 게시되는지 (요금제 이용 중이거나 바로 게시 모드)
     postsDirect(u) { return !!(u && u.role === 'owner' && (this.hasPlan(u) || this.autoPost())); },
     async setPlan(id, plan, until) { ok(await sb.rpc('admin_set_plan', { target: id, new_plan: plan || null, until: until || null })); return done(); },
@@ -207,6 +211,9 @@
     async saveCampaign(data, id) {
       const old = id ? this.campaign(id) : null;
       if (id && !old) throw new Error('모집글을 찾을 수 없습니다.');
+      if (!old && !this.canCreateCampaign(this.currentUser())) {
+        throw new Error('유료 운영 중입니다. 요금제를 신청한 뒤 모집글을 등록해 주세요.');
+      }
       const row = fromCampaign(data);
       // 새로 고른 대표 이미지는 파일 저장소에 올리고 주소만 저장
       if (/^data:/.test(row.image)) {
