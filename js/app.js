@@ -1976,10 +1976,14 @@
       }).catch(err => { t.value = ''; toast(err.message); });
     }
   });
-  window.addEventListener('hashchange', () => Store.refresh().catch(() => {}).then(() => render()));
+  window.addEventListener('hashchange', () => Store.refresh().catch(() => {}).then(() => {
+    render();
+    showEventPop();
+  }));
 
   /* ---------- 오픈 기념 공지 팝업 ---------- */
   const eventPop = document.getElementById('eventPop');
+  let eventPopSeen = false;
   function hideEventPop() { eventPop.hidden = true; document.body.classList.remove('event-open'); }
   // 무료체험 팝업 본문: # 줄은 소제목, * 줄은 목록, 나머지는 문단. {종료일}은 실제 날짜로
   // 관리자 화면에서 작성 중인 무료체험 문구와 기간 (저장 전 값으로 미리보기)
@@ -2007,12 +2011,16 @@
   }
   function showEventPop() {
     if (!eventPop) return;
+    const path = location.hash.slice(1) || '/';
+    if (path !== '/') { hideEventPop(); return; }
+    if (eventPopSeen) return;
     const trial = trialOn();
     if (!trial && Store.today() > NOTICE_UNTIL) return;
     let hiddenUntil = '';
     try { hiddenUntil = localStorage.getItem(NOTICE_KEY) || ''; } catch (e) { /* 저장이 막힌 환경 */ }
     if (hiddenUntil >= Store.today()) return;
     if (trial) fillTrialPop({ title: S.trialNoticeTitle, text: S.trialNotice, start: S.trialStart, until: S.trialUntil });
+    eventPopSeen = true;
     openEventPop(trial);
   }
   eventPop.addEventListener('click', e => { if (e.target === eventPop) hideEventPop(); });
