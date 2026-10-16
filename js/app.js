@@ -116,25 +116,6 @@
     document.body.appendChild(el);
     el.querySelector('textarea').focus();
   }
-  // 결제하지 않은 사장님이 모집글을 올리기 전에 보는 요금제·입금 안내
-  function showPlanModal() {
-    closeModal();
-    const el = document.createElement('div');
-    el.className = 'modal';
-    el.innerHTML = `<div class="modal-box modal-box-wide" role="dialog" aria-modal="true">
-      <button type="button" class="modal-x" data-action="close-modal" aria-label="닫기">✕</button>
-      <h2>요금제 안내</h2>
-      <p class="menu">요금제를 이용하면 모집글이 승인 없이 바로 게시됩니다. 지금은 오픈 이벤트로 3개월간 할인 중입니다.</p>
-      <div class="plan-pick">
-        <div class="plan-pick-item"><b>Standard</b><span>인플루언서 최대 5명 관리</span><em>월 39,000원</em><small>정상가 49,000원</small></div>
-        <div class="plan-pick-item pro"><b>Pro</b><span>인플루언서 최대 10명 관리</span><em>월 49,000원</em><small>정상가 69,000원</small></div>
-      </div>
-      <h3 class="modal-sub">입금 안내</h3>
-      ${bankHtml()}
-      <a class="btn btn-dark btn-block btn-lg plan-kakao" href="https://pf.kakao.com/_xdGxexiX/chat" target="_blank" rel="noopener">카카오톡으로 결제 문의</a>
-    </div>`;
-    document.body.appendChild(el);
-  }
   const bankHtml = () => `<div class="bank-info">${nl2br(S.bankInfo)}</div><p class="bank-notice">${nl2br(S.bankNotice)}</p>`;
 
   let toastTimer;
@@ -269,7 +250,7 @@
           <p>${nl2br(S.heroSub)}</p>
           <div class="hero-actions">
             <a class="btn btn-yellow btn-lg" href="#/campaigns">${esc(S.heroButton)} ${ICON.arrow}</a>
-            ${owner ? '<a class="btn btn-soft btn-lg" href="#/post/new" data-action="new-post">+ 모집글 등록 신청</a>' : ''}
+            ${owner ? '<a class="btn btn-soft btn-lg" href="#/post/new">+ 모집글 등록 신청</a>' : ''}
           </div>
         </div>
         <p class="hand hero-note">${nl2br(S.heroNote)}</p>
@@ -290,7 +271,7 @@
       </div>
       <div class="cta cta-pink">
         <div><h3>${esc(S.ctaOwnerTitle)}</h3><p>${nl2br(S.ctaOwnerText)}</p>
-        ${owner ? `<a class="btn btn-pink" href="#/post/new" data-action="new-post">모집글 등록 신청하기 ${ICON.arrow}</a>`
+        ${owner ? `<a class="btn btn-pink" href="#/post/new">모집글 등록 신청하기 ${ICON.arrow}</a>`
           : `<a class="btn btn-pink" href="#/owner">${esc(S.ctaOwnerButton)} ${ICON.arrow}</a>`}</div>
         <span class="cta-emoji" aria-hidden="true">👩‍🍳</span>
       </div>
@@ -599,11 +580,11 @@
     };
     return `
     <section class="container section">
-      <div class="section-head"><h1>사장님 마이페이지</h1><span class="head-links"><a class="more" href="#/account">내 정보 · 비밀번호 변경</a><a class="btn btn-dark" href="#/post/new" data-action="new-post">+ 모집글 등록 신청</a></span></div>
+      <div class="section-head"><h1>사장님 마이페이지</h1><span class="head-links"><a class="more" href="#/account">내 정보 · 비밀번호 변경</a><a class="btn btn-dark" href="#/post/new">+ 모집글 등록 신청</a></span></div>
       ${paidNotice(u)}
       <p class="sub">${esc(u.storeName || u.name)} · 등록한 모집글 ${mine.length}건</p>
       ${mine.length > 1 ? `<h3 class="report-title">전체 진행 현황</h3>${progressStats(allApps)}` : ''}
-      ${mine.length ? mine.map(item).join('') : '<p class="empty">아직 등록한 모집글이 없습니다.<br><a href="#/post/new" data-action="new-post">첫 체험단 모집글 등록 신청하기</a></p>'}
+      ${mine.length ? mine.map(item).join('') : '<p class="empty">아직 등록한 모집글이 없습니다.<br><a href="#/post/new">첫 체험단 모집글 등록 신청하기</a></p>'}
     </section>`;
   }
 
@@ -789,7 +770,7 @@
   function ownerLanding() {
     const u = Store.currentUser();
     const cta = u && u.role === 'owner'
-      ? `<a class="btn btn-dark btn-lg" href="#/post/new" data-action="new-post">모집글 등록하기 ${ICON.arrow}</a>`
+      ? `<a class="btn btn-dark btn-lg" href="#/post/new">모집글 등록하기 ${ICON.arrow}</a>`
       : `<a class="btn btn-dark btn-lg" href="#/signup/owner">사장님으로 가입하기 ${ICON.arrow}</a>`;
     return `
     <section class="hero hero-md" style="background-image:url('${media('ownerBg')}')">
@@ -1729,12 +1710,6 @@
   document.addEventListener('click', e => {
     const el = e.target.closest('[data-action]');
     if (!el) return;
-    // 모집글 등록 버튼: 요금제가 없는 사장님에게는 이동을 막고 요금제·입금 안내를 먼저 보여 줌
-    if (el.dataset.action === 'new-post') {
-      const u = me();
-      if (u && u.role === 'owner' && !Store.postsDirect(u)) { e.preventDefault(); showPlanModal(); }
-      return;
-    }
     run(() => actions[el.dataset.action](el));
   });
   document.addEventListener('submit', e => {
