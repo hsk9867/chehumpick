@@ -5,3 +5,5 @@ wrangler.jsonc
 .assetsignore
 .gitignore
 node_modules
+.playwright-cli
+output

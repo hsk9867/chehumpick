@@ -33,16 +33,23 @@
   }
   const ok = res => { if (res.error) fail(res.error); return res.data; };
 
+  const campaignImages = r => {
+    const images = [r.image].concat(Array.isArray(r.images) ? r.images : []).filter(Boolean);
+    return images.filter((url, index) => images.indexOf(url) === index);
+  };
   const toCampaign = r => ({
     id: r.id, ownerId: r.owner_id, storeName: r.store_name, menu: r.menu, amount: r.amount, region: r.region,
-    category: r.category, channel: r.channel, capacity: r.capacity, image: r.image, deadline: r.deadline,
+    category: r.category, channel: r.channel, capacity: r.capacity, image: campaignImages(r)[0] || '', images: campaignImages(r), deadline: r.deadline,
     periodStart: r.period_start, periodEnd: r.period_end, visitStart: r.visit_start, visitEnd: r.visit_end,
+    visitSchedule: r.visit_schedule || '', placeUrl: r.place_url || '',
+    targetKeywords: Array.isArray(r.target_keywords) ? r.target_keywords.filter(Boolean).slice(0, 3) : [],
     description: r.description, conditions: r.conditions, status: r.status, approval: r.approval, cancelled: r.cancelled || 0, createdAt: day(r.created_at)
   });
   const fromCampaign = d => ({
     store_name: d.storeName, menu: d.menu, amount: d.amount, region: d.region, category: d.category,
-    channel: d.channel, capacity: d.capacity, image: d.image, deadline: d.deadline,
+    channel: d.channel, capacity: d.capacity, image: d.image, images: d.images, deadline: d.deadline,
     period_start: d.periodStart, period_end: d.periodEnd, visit_start: d.visitStart, visit_end: d.visitEnd,
+    visit_schedule: d.visitSchedule, place_url: d.placeUrl, target_keywords: d.targetKeywords,
     description: d.description, conditions: d.conditions
   });
   const toApplication = r => ({
@@ -214,20 +221,45 @@
       if (!old && !this.canCreateCampaign(this.currentUser())) {
         throw new Error('유료 운영 중입니다. 요금제를 신청한 뒤 모집글을 등록해 주세요.');
       }
-      const row = fromCampaign(data);
-      // 새로 고른 대표 이미지는 파일 저장소에 올리고 주소만 저장
-      if (/^data:/.test(row.image)) {
-        row.image = await upload(`campaigns/${cache.meId}/${newId()}.jpg`, await dataUrlToBlob(row.image));
+      const sourceImages = (Array.isArray(data.images) ? data.images : [data.image]).filter(Boolean).slice(0, 10);
+      const row = fromCampaign({ ...data, image: sourceImages[0] || '', images: sourceImages });
+      const newlyUploaded = [];
+      const savedImages = [];
+      // 새로 고른 사진만 파일 저장소에 올리고, 기존 사진 주소는 그대로 유지
+      try {
+        for (const source of sourceImages) {
+          if (/^data:/.test(source)) {
+            const url = await upload(`campaigns/${cache.meId}/${newId()}.jpg`, await dataUrlToBlob(source));
+            newlyUploaded.push(url);
+            savedImages.push(url);
+          } else {
+            savedImages.push(source);
+          }
+        }
+        row.images = savedImages;
+        row.image = savedImages[0] || '';
+      } catch (error) {
+        await Promise.all(newlyUploaded.map(removeFile));
+        throw error;
       }
       let saved;
+      try {
+        if (old) {
+          if (old.approval === 'rejected' && old.ownerId === cache.meId) row.approval = 'pending';
+          saved = ok(await sb.from('campaigns').update(row).eq('id', id).select().single());
+        } else {
+          row.owner_id = cache.meId;
+          if (this.postsDirect(this.currentUser())) row.approval = 'approved'; // 요금제 사장님·바로 게시 모드는 바로 게시
+          saved = ok(await sb.from('campaigns').insert(row).select().single());
+        }
+      } catch (error) {
+        await Promise.all(newlyUploaded.map(removeFile));
+        throw error;
+      }
+      // DB 저장이 끝난 뒤 빠진 이전 사진을 정리합니다. 정리 실패가 저장된 글과 새 사진을 깨뜨리면 안 됩니다.
       if (old) {
-        if (old.approval === 'rejected' && old.ownerId === cache.meId) row.approval = 'pending';
-        saved = ok(await sb.from('campaigns').update(row).eq('id', id).select().single());
-        if (old.image !== row.image) await removeFile(old.image);
-      } else {
-        row.owner_id = cache.meId;
-        if (this.postsDirect(this.currentUser())) row.approval = 'approved'; // 요금제 사장님·바로 게시 모드는 바로 게시
-        saved = ok(await sb.from('campaigns').insert(row).select().single());
+        const removed = old.images.filter(url => !savedImages.includes(url));
+        await Promise.allSettled(removed.map(removeFile));
       }
       if (data.reservePhone) ok(await sb.from('campaign_contacts').upsert({ campaign_id: saved.id, phone: data.reservePhone }));
       if (data.ownerPhone) ok(await sb.from('campaign_owner_contacts').upsert({ campaign_id: saved.id, phone: data.ownerPhone }));
@@ -245,7 +277,7 @@
     async deleteCampaign(id) {
       const c = this.campaign(id);
       ok(await sb.from('campaigns').delete().eq('id', id));
-      if (c) await removeFile(c.image);
+      if (c) await Promise.all(c.images.map(removeFile));
       return done();
     },
 

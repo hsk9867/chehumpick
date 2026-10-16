@@ -14,6 +14,8 @@
     '블로그 + 인스타': ['blog', 'feed', 'reels'], '상관없음': ['blog', 'feed', 'reels']
   };
   const MAX_MESSAGE = 200;
+  const MAX_CAMPAIGN_IMAGES = 10;
+  const MAX_TARGET_KEYWORDS = 3;
   const SNS_TYPES = ['인스타그램', '네이버 블로그', '유튜브', '기타'];
   // 관리자가 바꿀 수 있는 영상·사진 자리: [키, 이름, 종류, 기본 파일]
   const MEDIA_SLOTS = [
@@ -72,7 +74,7 @@
   const PLAN_LABEL = { standard: 'Standard', pro: 'Pro' };
   const ROLE_LABEL = { influencer: '인플루언서', owner: '사장님', admin: '관리자' };
 
-  const state = { cat: '전체', region: '전체', snsDraft: null, q: '', adminTab: 'apps', userQ: '', userRole: '전체', userSort: 'createdAt', userSortDesc: false, afterLogin: null, pendingImage: null };
+  const state = { cat: '전체', region: '전체', snsDraft: null, q: '', adminTab: 'apps', userQ: '', userRole: '전체', userSort: 'createdAt', userSortDesc: false, afterLogin: null, pendingImages: [] };
 
   /* ---------- 공통 도구 ---------- */
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, ch =>
@@ -82,6 +84,21 @@
   const md = d => { if (!d) return ''; const p = d.split('-'); return `${Number(p[1])}/${Number(p[2])}`; };
   const range = (a, b) => `${md(a)} ~ ${md(b)}`;
   const safeUrl = u => (/^https?:\/\//i.test(u || '') ? esc(u) : '#');
+  const isNaverPlaceUrl = value => {
+    if (!value) return true;
+    try {
+      const url = new URL(value);
+      const host = url.hostname.toLowerCase();
+      return /^https?:$/.test(url.protocol) && (host === 'naver.me' || host === 'naver.com' || host.endsWith('.naver.com'));
+    } catch (error) {
+      return false;
+    }
+  };
+  const campaignPhotos = c => {
+    const photos = [c && c.image].concat(c && Array.isArray(c.images) ? c.images : []).filter(Boolean);
+    return photos.filter((url, index) => photos.indexOf(url) === index);
+  };
+  const recruitmentText = c => `현재 ${Store.pickedCount(c.id)}명 선정 / 총 ${c.capacity}명 모집`;
   const go = path => { location.hash = '#' + path; };
 
   // 사이트 설정(관리자가 고친 문구). 화면을 그릴 때마다 최신 값으로 갱신
@@ -207,20 +224,21 @@
       .filter(c => !onlyOpen || Store.isOpen(c))
       .filter(c => state.cat === '전체' || c.category === state.cat)
       .filter(c => state.region === '전체' || sidoOf(c.region) === state.region)
-      .filter(c => !q || [c.storeName, c.menu, c.region].join(' ').toLowerCase().includes(q))
+      .filter(c => !q || [c.storeName, c.menu, c.region].concat(c.targetKeywords || []).join(' ').toLowerCase().includes(q))
       .sort((a, b) => Store.isOpen(b) - Store.isOpen(a));
   }
 
   function card(c) {
+    const photoCount = campaignPhotos(c).length;
     return `<a class="card" href="#/campaign/${c.id}">
-      <div class="card-img"><img src="${esc(c.image)}" alt="${esc(c.storeName)}" loading="lazy"><span class="region">${esc(c.region)}</span></div>
+      <div class="card-img"><img src="${esc(c.image)}" alt="${esc(c.storeName)}" loading="lazy"><span class="region">${esc(c.region)}</span>${photoCount > 1 ? `<span class="photo-count" aria-label="사진 ${photoCount}장">${ICON.cam}${photoCount}</span>` : ''}</div>
       <div class="card-body">
         <h3>${esc(c.storeName)}</h3>
         <p class="menu">${esc(c.menu)}</p>
         <p class="price">${won(c.amount)} 상당</p>
         <ul class="meta">
           <li>${ICON.cam}${esc(c.channel)}</li>
-          <li>${ICON.users}${c.capacity}명 모집</li>
+          <li class="recruitment-meta">${ICON.users}<strong>${esc(recruitmentText(c))}</strong></li>
           <li>${ICON.cal}${md(c.deadline)} 마감</li>
         </ul>
         <span class="btn btn-soft btn-block">신청하기</span>
@@ -243,7 +261,7 @@
         <div class="row-tags"><span class="tag">${esc(c.region)}</span><span class="tag tag-line">${esc(c.channel)}</span>${Store.isOpen(c) ? '' : '<span class="tag tag-dark">마감</span>'}</div>
         <h3>${esc(c.storeName)}</h3>
         <p class="menu">${esc(c.menu)} · ${won(c.amount)} 상당</p>
-        <ul class="meta meta-inline"><li>${ICON.users}${c.capacity}명 모집</li><li>${ICON.cal}${md(c.deadline)} 마감</li></ul>
+        <ul class="meta meta-inline"><li class="recruitment-meta">${ICON.users}<strong>${esc(recruitmentText(c))}</strong></li><li>${ICON.cal}${md(c.deadline)} 마감</li></ul>
       </div>
       <span class="row-arrow">${ICON.chevron}</span>
     </a>`).join('');
@@ -334,6 +352,27 @@
     }).join('')}</div>`;
   }
 
+  function campaignGallery(c) {
+    const photos = campaignPhotos(c);
+    if (!photos.length) return '';
+    return `<div class="detail-gallery" data-gallery>
+      <div class="detail-gallery-main">
+        <img src="${esc(photos[0])}" alt="${esc(c.storeName)} 사진 1" data-gallery-main>
+        ${photos.length > 1 ? `<span class="detail-photo-count">사진 ${photos.length}장</span>` : ''}
+      </div>
+      ${photos.length > 1 ? `<div class="detail-thumbs" aria-label="${esc(c.storeName)} 사진 선택">${photos.map((photo, index) => `<button type="button" class="${index === 0 ? 'on' : ''}" data-action="gallery-photo" data-src="${esc(photo)}" data-alt="${esc(c.storeName)} 사진 ${index + 1}" aria-label="사진 ${index + 1} 보기" aria-pressed="${index === 0 ? 'true' : 'false'}"><img src="${esc(photo)}" alt="" loading="lazy"></button>`).join('')}</div>` : ''}
+    </div>`;
+  }
+
+  function campaignGoal(c) {
+    const keywords = Array.isArray(c.targetKeywords) ? c.targetKeywords.filter(Boolean) : [];
+    if (!c.placeUrl && !keywords.length) return '';
+    return `<div class="block campaign-goal"><h2>캠페인 목표</h2>
+      ${keywords.length ? `<div><h3>목표 키워드</h3><ul class="keyword-chips">${keywords.map(keyword => `<li>${esc(keyword)}</li>`).join('')}</ul></div>` : ''}
+      ${c.placeUrl ? `<a class="place-link" href="${safeUrl(c.placeUrl)}" target="_blank" rel="noopener noreferrer">네이버 플레이스에서 매장 보기 ${ICON.arrow}</a>` : ''}
+    </div>`;
+  }
+
   function detail(id) {
     const c = Store.campaign(id);
     if (!c) return notFound();
@@ -358,7 +397,7 @@
       <a class="back" href="#/campaigns">← 체험단 목록</a>
       ${approvalNote}
       <div class="detail">
-        <div class="detail-img"><img src="${esc(c.image)}" alt="${esc(c.storeName)}"></div>
+        ${campaignGallery(c)}
         <div class="detail-head">
           <div class="row-tags"><span class="tag">${esc(c.region)}</span><span class="tag">${esc(c.category)}</span><span class="tag tag-line">${esc(c.channel)}</span>${openBadge(c)}</div>
           <h1>${esc(c.storeName)}</h1>
@@ -369,10 +408,12 @@
       <dl class="info">
         <div><dt>체험 메뉴</dt><dd>${esc(c.menu)}</dd></div>
         <div><dt>제공 금액</dt><dd>${won(c.amount)}</dd></div>
-        <div><dt>모집 인원</dt><dd>총 ${c.capacity}명 (${esc(c.channel)}) · 현재 ${Store.pickedCount(c.id)}명 선정</dd></div>
+        <div><dt>모집 현황</dt><dd><strong class="recruitment-current">현재 ${Store.pickedCount(c.id)}명 선정</strong> / 총 ${c.capacity}명 모집 (${esc(c.channel)})</dd></div>
         <div><dt>모집 마감</dt><dd>${esc(c.deadline)}</dd></div>
         <div><dt>방문 가능 기간</dt><dd>${esc(c.visitStart)} ~ ${esc(c.visitEnd)}</dd></div>
+        ${c.visitSchedule ? `<div><dt>방문 가능 일정</dt><dd class="visit-schedule">${nl2br(c.visitSchedule)}</dd></div>` : ''}
       </dl>
+      ${campaignGoal(c)}
       <div class="block"><h2>체험 내용</h2><p>${nl2br(c.description)}</p></div>
       <div class="block"><h2>리뷰 조건</h2><p>${nl2br(c.conditions)}</p></div>
       ${missionBlock(c)}
@@ -613,13 +654,32 @@
   }
 
   /* ---------- 7. 모집글 등록·수정 ---------- */
+  function imagePreviewHtml() {
+    if (!state.pendingImages.length) return '<p class="image-preview-empty">선택한 사진이 없습니다.</p>';
+    return state.pendingImages.map((src, index) => `<figure class="image-preview-item">
+      <div><img src="${esc(src)}" alt="등록 사진 ${index + 1} 미리보기">${index === 0 ? '<span class="cover-label">대표</span>' : ''}</div>
+      <figcaption>
+        ${index === 0 ? '<span>목록 대표 사진</span>' : `<button type="button" data-action="make-cover-image" data-index="${index}">대표로 설정</button>`}
+        <button type="button" class="danger" data-action="remove-post-image" data-index="${index}" aria-label="등록 사진 ${index + 1} 삭제">삭제</button>
+      </figcaption>
+    </figure>`).join('');
+  }
+
+  function updateImagePreview() {
+    const preview = document.getElementById('image-preview');
+    const count = document.getElementById('image-count');
+    if (preview) preview.innerHTML = imagePreviewHtml();
+    if (count) count.textContent = `${state.pendingImages.length} / ${MAX_CAMPAIGN_IMAGES}장`;
+  }
+
   function postForm(id) {
     const u = Store.currentUser();
     const c = id ? Store.campaign(id) : null;
     if (id && !c) return notFound();
     if (c && u.role !== 'admin' && c.ownerId !== u.id) return denied();
-    state.pendingImage = null;
+    state.pendingImages = c ? campaignPhotos(c).slice(0, MAX_CAMPAIGN_IMAGES) : [];
     const v = k => esc(c ? c[k] : '');
+    const keywords = c && Array.isArray(c.targetKeywords) ? c.targetKeywords : [];
     const opts = (arr, cur) => arr.map(o => `<option ${o === cur ? 'selected' : ''}>${o}</option>`).join('');
     return `
     <section class="container section form-page wide">
@@ -646,12 +706,26 @@
           <label>방문 가능 기간 시작 <i>*</i><input type="date" name="visitStart" value="${v('visitStart')}"></label>
           <label>방문 가능 기간 종료 <i>*</i><input type="date" name="visitEnd" value="${v('visitEnd')}"></label>
         </div>
+        <label>방문 가능한 요일·시간 <i>*</i><textarea name="visitSchedule" rows="3" placeholder="예: 월·화·수·목 12시~14시만 체험 가능 / 공휴일 방문 불가">${v('visitSchedule')}</textarea><span class="field-help">방문 가능한 요일과 시간, 공휴일·브레이크타임처럼 꼭 확인할 내용을 함께 적어 주세요.</span></label>
+        <fieldset class="form-section">
+          <legend>목표 설정</legend>
+          <p class="form-help">리뷰어가 매장 위치와 이번 캠페인의 핵심 표현을 정확히 확인할 수 있습니다.</p>
+          <label>네이버 플레이스 URL <span class="optional">선택</span><input type="url" name="placeUrl" value="${v('placeUrl')}" inputmode="url" placeholder="https://m.place.naver.com/..."></label>
+          <div class="keyword-inputs" role="group" aria-labelledby="target-keyword-label">
+            <p id="target-keyword-label">목표 키워드 <span class="optional">최대 ${MAX_TARGET_KEYWORDS}개</span></p>
+            ${Array.from({ length: MAX_TARGET_KEYWORDS }, (_, index) => `<label><span>키워드 ${index + 1}</span><input name="targetKeyword${index + 1}" value="${esc(keywords[index] || '')}" maxlength="30" placeholder="예: 아산 맛집"></label>`).join('')}
+          </div>
+        </fieldset>
         <label>사장님 휴대폰 번호 <i>*</i><input type="tel" name="ownerPhone" value="${esc(c ? Store.ownerPhone(c.id) : (u.role === 'owner' ? u.phone || '' : ''))}" placeholder="입금 확인·승인 안내를 받을 번호 (관리자에게만 공개)"></label>
         <label>예약 연락처 <i>*</i><input type="tel" name="reservePhone" value="${esc(c ? Store.reservePhone(c.id) : '')}" placeholder="예약 문의를 받을 매장 전화번호 (선정된 리뷰어에게만 공개)"></label>
         <label>체험 내용 <i>*</i><textarea name="description" rows="4" placeholder="제공 내역, 방문 시 안내 사항 등을 적어 주세요">${v('description')}</textarea></label>
         <label>리뷰 조건 <i>*</i><textarea name="conditions" rows="4" placeholder="예: 매장 방문 후 릴스 1건 업로드">${v('conditions')}</textarea></label>
-        <label>대표 이미지 (1장) <i>*</i><input type="file" id="post-image" accept="image/*"></label>
-        <div id="image-preview" class="image-preview">${c ? `<img src="${v('image')}" alt="현재 대표 이미지">` : ''}</div>
+        <fieldset class="form-section image-upload-section">
+          <legend>매장 사진 <i>*</i></legend>
+          <div class="image-upload-head"><p class="form-help">최대 ${MAX_CAMPAIGN_IMAGES}장까지 등록할 수 있습니다. 첫 번째 사진이 목록의 대표 이미지로 표시됩니다.</p><strong id="image-count" class="image-count">${state.pendingImages.length} / ${MAX_CAMPAIGN_IMAGES}장</strong></div>
+          <label class="image-picker">사진 추가<input type="file" id="post-images" accept="image/*" multiple></label>
+          <div id="image-preview" class="image-preview">${imagePreviewHtml()}</div>
+        </fieldset>
         <button class="btn btn-dark btn-block btn-lg">${c ? (c.approval === 'rejected' && u.role !== 'admin' ? '수정하고 다시 신청하기' : '수정 내용 저장') : Store.postsDirect(u) ? '등록하기' : '등록 신청하기'}</button>
         ${c ? `<button type="button" class="btn btn-soft btn-block danger" data-action="delete-campaign" data-id="${c.id}">이 모집글 삭제</button>` : ''}
       </form>
@@ -1360,6 +1434,30 @@
 
   const actions = {
     'toggle-nav': () => nav.classList.toggle('open'),
+    'gallery-photo': el => {
+      const gallery = el.closest('[data-gallery]');
+      const main = gallery && gallery.querySelector('[data-gallery-main]');
+      if (!gallery || !main) return;
+      main.src = el.dataset.src;
+      main.alt = el.dataset.alt;
+      gallery.querySelectorAll('[data-action="gallery-photo"]').forEach(button => {
+        const on = button === el;
+        button.classList.toggle('on', on);
+        button.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    },
+    'make-cover-image': el => {
+      const index = Number(el.dataset.index);
+      if (!Number.isInteger(index) || index <= 0 || !state.pendingImages[index]) return;
+      state.pendingImages.unshift(state.pendingImages.splice(index, 1)[0]);
+      updateImagePreview();
+    },
+    'remove-post-image': el => {
+      const index = Number(el.dataset.index);
+      if (!Number.isInteger(index) || !state.pendingImages[index]) return;
+      state.pendingImages.splice(index, 1);
+      updateImagePreview();
+    },
     'close-modal': closeModal,
     'ads-tab': el => {
       const i = el.dataset.tab;
@@ -1741,20 +1839,25 @@
       need(t('regionDetail'), '시·군·구를 입력해 주세요.');
       need(t('deadline'), '모집 마감일을 선택해 주세요.');
       need(t('visitStart') && t('visitEnd') && t('visitStart') <= t('visitEnd'), '방문 가능 기간을 올바르게 선택해 주세요.');
+      need(t('visitSchedule'), '방문 가능한 요일과 시간을 입력해 주세요.');
+      need(isNaverPlaceUrl(t('placeUrl')), '네이버 플레이스 URL을 정확히 입력해 주세요. (naver.com 또는 naver.me 주소)');
       need(/^01[0-9]-?[0-9]{3,4}-?[0-9]{4}$/.test(t('ownerPhone')), '사장님 휴대폰 번호를 정확히 입력해 주세요. (예: 010-1234-5678)');
       need(/^[0-9-]{8,13}$/.test(t('reservePhone')), '예약 연락처를 숫자와 하이픈(-)으로 정확히 입력해 주세요.');
       need(t('description'), '체험 내용을 입력해 주세요.');
       need(t('conditions'), '리뷰 조건을 입력해 주세요.');
-      const image = state.pendingImage || (old && old.image);
-      need(image, '대표 이미지를 1장 등록해 주세요.');
+      const targetKeywords = Array.from({ length: MAX_TARGET_KEYWORDS }, (_, index) => t(`targetKeyword${index + 1}`)).filter(Boolean);
+      need(new Set(targetKeywords.map(keyword => keyword.toLowerCase())).size === targetKeywords.length, '목표 키워드는 서로 다르게 입력해 주세요.');
+      const images = state.pendingImages.slice(0, MAX_CAMPAIGN_IMAGES);
+      need(images.length, '매장 사진을 1장 이상 등록해 주세요.');
       const data = {
         storeName: t('storeName'), menu: t('menu'), amount: Number(f.amount.value), capacity: Number(f.capacity.value),
         region: f.regionSido.value + ' ' + t('regionDetail'), category: f.category.value, channel: f.channel.value, deadline: t('deadline'),
         periodStart: t('visitStart'), periodEnd: t('visitEnd'), visitStart: t('visitStart'), visitEnd: t('visitEnd'), // 체험 기간은 따로 받지 않고 방문 가능 기간과 같게 저장
-        description: t('description'), conditions: t('conditions'), image, reservePhone: t('reservePhone'), ownerPhone: t('ownerPhone')
+        visitSchedule: t('visitSchedule'), placeUrl: t('placeUrl'), targetKeywords,
+        description: t('description'), conditions: t('conditions'), image: images[0], images, reservePhone: t('reservePhone'), ownerPhone: t('ownerPhone')
       };
       const saved = await Store.saveCampaign(data, id || undefined);
-      state.pendingImage = null;
+      state.pendingImages = [];
       toast(!old ? (saved.approval === 'approved' ? '모집글을 등록했습니다. 사이트에 바로 게시되었습니다.' : '등록 신청했습니다. 관리자 승인 후 게시됩니다.')
         : saved.approval === 'pending' && old.approval === 'rejected' ? '수정하고 다시 신청했습니다.' : '모집글을 수정했습니다.');
       go(saved.approval === 'approved' ? '/campaign/' + saved.id : u.role === 'admin' ? '/admin/campaigns' : '/my');
@@ -1787,7 +1890,7 @@
     }).catch(err => toast((err && err.message) || '파일을 저장하지 못했습니다.'));
   }
 
-  // 이미지를 가로 max px 이하 JPEG로 줄여서 반환 (모집글 대표 이미지는 900px)
+  // 업로드 사진을 가로 max px 이하 JPEG로 줄여 여러 장이어도 전송량을 일정하게 유지
   function readImage(file, max = 900) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -1858,10 +1961,18 @@
       if (grid) grid.innerHTML = homeGrid();
       if (rows) rows.innerHTML = listResults();
     }
-    if (t.id === 'post-image' && t.files[0]) {
-      readImage(t.files[0]).then(data => {
-        state.pendingImage = data;
-        document.getElementById('image-preview').innerHTML = `<img src="${data}" alt="대표 이미지 미리보기">`;
+    if (t.id === 'post-images' && t.files.length) {
+      const room = MAX_CAMPAIGN_IMAGES - state.pendingImages.length;
+      const files = Array.from(t.files).slice(0, Math.max(0, room));
+      if (!room) {
+        t.value = '';
+        return toast(`사진은 최대 ${MAX_CAMPAIGN_IMAGES}장까지 등록할 수 있습니다.`);
+      }
+      Promise.all(files.map(file => readImage(file, 1200))).then(images => {
+        state.pendingImages.push(...images);
+        updateImagePreview();
+        if (t.files.length > files.length) toast(`사진은 최대 ${MAX_CAMPAIGN_IMAGES}장까지 등록됩니다.`);
+        t.value = '';
       }).catch(err => { t.value = ''; toast(err.message); });
     }
   });

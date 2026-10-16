@@ -1,3 +1,5 @@
 .wrangler
 node_modules
+.playwright-cli
+output
 .env*
