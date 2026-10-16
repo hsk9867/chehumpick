@@ -51,7 +51,8 @@
   });
 
   // 서버에서 최신 데이터를 다시 받아 옴. 로그인 상태에 따라 볼 수 있는 범위만 내려옴
-  async function refresh() {
+  async function refresh(options) {
+    const allowPendingOwner = !!(options && options.allowPendingOwner);
     const { data: { session } } = await sb.auth.getSession();
     const uid = session ? session.user.id : null;
     const none = Promise.resolve({ data: [] });
@@ -73,6 +74,7 @@
     cache.users = ok(profiles).map(p => ({
       id: p.id, role: p.role, name: p.name, username: p.username, snsType: p.sns_type, snsUrl: p.sns_url, storeName: p.store_name,
       snsLinks: Array.isArray(p.sns_links) ? p.sns_links : [], paidUntil: p.paid_until || null, plan: p.plan || null,
+      ownerApproved: p.owner_approved !== false,
       email: (contactOf[p.id] || {}).email, phone: (contactOf[p.id] || {}).phone, createdAt: day(p.created_at)
     }));
     cache.applications = ok(applications).map(toApplication);
@@ -86,7 +88,12 @@
     if (uid) ok(await sb.from('campaign_owner_contacts').select('*')).forEach(r => { cache.ownerPhones[r.campaign_id] = r.phone; });
     cache.meId = uid;
     // 관리자가 삭제한 계정 등 프로필이 없는 로그인은 정리
-    if (uid && !cache.users.some(u => u.id === uid)) { await sb.auth.signOut(); cache.meId = null; }
+    const me = cache.users.find(u => u.id === uid);
+    if (uid && !me) { await sb.auth.signOut(); cache.meId = null; }
+    else if (uid && me.role === 'owner' && !me.ownerApproved && !allowPendingOwner) {
+      await sb.auth.signOut();
+      cache.meId = null;
+    }
   }
   const done = async value => { await refresh(); return value; };
 
@@ -112,13 +119,17 @@
     // role을 넘기면 해당 유형의 회원만 로그인 (관리자는 어느 쪽에서든 가능)
     async login(username, password, role) {
       ok(await sb.auth.signInWithPassword({ email: toEmail(username), password }));
-      await refresh();
+      await refresh({ allowPendingOwner: true });
       const u = this.currentUser();
       if (!u) throw new Error('삭제되었거나 사용할 수 없는 계정입니다.');
       if (role && u.role !== 'admin' && u.role !== role) {
         await this.logout();
         throw new Error(u.role === 'owner' ? '사장님 계정입니다. "사장님으로 로그인"을 선택해 주세요.'
           : '인플루언서 계정입니다. "인플루언서로 로그인"을 선택해 주세요.');
+      }
+      if (u.role === 'owner' && !u.ownerApproved) {
+        await this.logout();
+        throw new Error('관리자 승인 대기 중인 사장님 계정입니다. 승인 후 로그인해 주세요.');
       }
       return u;
     },
@@ -133,8 +144,13 @@
         } }
       }));
       if (!res.session) throw new Error('가입 확인 메일을 보냈습니다. 메일의 링크를 누른 뒤 로그인해 주세요.');
-      await refresh();
-      return this.currentUser();
+      await refresh({ allowPendingOwner: true });
+      const u = this.currentUser();
+      if (u && u.role === 'owner' && !u.ownerApproved) {
+        await this.logout();
+        return Object.assign({}, u, { pendingApproval: true });
+      }
+      return u;
     },
     users() { return cache.users.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt)); },
     user(id) { return cache.users.find(u => u.id === id) || null; },
@@ -144,9 +160,12 @@
     hasPlan(u) { return !!(u && u.plan && this.isPaid(u)); },
     // 관리자가 "승인 없이 바로 게시"를 켜 두었는지
     autoPost() { return this.settings().ownerAutoPost === 'on'; },
+    // 관리자가 새 사장님 계정을 가입 즉시 승인하도록 켜 두었는지
+    ownerSignupAutoApprove() { return this.settings().ownerSignupAutoApprove === 'on'; },
     // 이 사장님의 새 모집글이 승인 없이 바로 게시되는지 (요금제 이용 중이거나 바로 게시 모드)
     postsDirect(u) { return !!(u && u.role === 'owner' && (this.hasPlan(u) || this.autoPost())); },
     async setPlan(id, plan, until) { ok(await sb.rpc('admin_set_plan', { target: id, new_plan: plan || null, until: until || null })); return done(); },
+    async setOwnerApproval(id, approved) { ok(await sb.rpc('admin_set_owner_approval', { target: id, approved: !!approved })); return done(); },
     async setPaid(id, until) { ok(await sb.rpc('admin_set_paid', { target: id, until: until || null })); return done(); },
     async updateSns(links) { ok(await sb.rpc('update_my_sns', { links })); return done(); },
     // 내 이름·연락처(사장님은 매장명도) 수정

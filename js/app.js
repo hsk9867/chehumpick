@@ -402,6 +402,9 @@
         </div>
         <div class="only-owner">
           <label>매장명<input name="storeName" placeholder="매장 이름"></label>
+          <p class="note signup-approval-note" role="status">${Store.ownerSignupAutoApprove()
+            ? '가입 즉시 사장님 서비스를 이용할 수 있습니다.'
+            : '가입 후 관리자 승인이 완료되면 로그인할 수 있습니다.'}</p>
         </div>
         <label class="check"><input type="checkbox" name="agree"><span><a href="#/terms" target="_blank">이용약관</a> 및 <a href="#/privacy" target="_blank">개인정보처리방침</a>에 동의합니다. (필수)</span></label>
         <button class="btn btn-dark btn-block btn-lg">가입하기</button>
@@ -671,15 +674,21 @@
     const list = Store.users()
       .filter(u => state.userRole === '전체' || u.role === state.userRole)
       .filter(u => !q || text(u).includes(q) || (digits.length >= 3 && String(u.phone || '').replace(/[^0-9]/g, '').includes(digits)));
-    return list.sort((a, b) => dir * by(a, b)).map(u => `<tr>
-          <td>${ROLE_LABEL[u.role]}</td><td>${esc(u.name)}${Store.hasResetRequest(u.id) ? ' <span class="badge badge-wait">비밀번호 재설정 요청</span>' : ''}</td><td>${esc(u.username)}</td><td>${esc(u.phone)}</td>
+    const pendingRank = u => u.role === 'owner' && !u.ownerApproved ? 0 : 1;
+    return list.sort((a, b) => pendingRank(a) - pendingRank(b) || dir * by(a, b)).map(u => `<tr>
+          <td>${ROLE_LABEL[u.role]}</td>
+          <td class="nowrap">${u.role === 'owner'
+            ? `<span class="badge ${u.ownerApproved ? 'badge-ok' : 'badge-wait'}">${u.ownerApproved ? '승인됨' : '승인 대기'}</span>`
+            : '<span class="muted">-</span>'}</td>
+          <td>${esc(u.name)}${Store.hasResetRequest(u.id) ? ' <span class="badge badge-wait">비밀번호 재설정 요청</span>' : ''}</td><td>${esc(u.username)}</td><td>${esc(u.phone)}</td>
           <td>${u.role === 'influencer' ? snsLinks(u) : esc(u.storeName || '-')}</td>
           <td>${u.role === 'influencer' ? `참여 ${act(u.id).n}회 <span class="muted">(선정 ${act(u.id).picked})</span>` : u.role === 'owner' ? `등록 ${act(u.id).n}건` : '<span class="muted">-</span>'}</td>
           <td>${esc(u.createdAt)}</td>
           <td class="nowrap">${u.role === 'owner' ? paidCell(u) : '<span class="muted">-</span>'}</td>
-          <td class="nowrap">${u.role === 'admin' ? '' : `<button class="btn btn-soft btn-sm" data-action="reset-password" data-id="${u.id}">임시 비밀번호 발급</button>
+          <td class="nowrap">${u.role === 'admin' ? '' : `${u.role === 'owner' ? `<button class="btn ${u.ownerApproved ? 'btn-soft danger' : 'btn-dark'} btn-sm" data-action="set-owner-approval" data-id="${u.id}" data-approved="${u.ownerApproved ? 'false' : 'true'}">${u.ownerApproved ? '승인 취소' : '가입 승인'}</button>` : ''}
+            <button class="btn btn-soft btn-sm" data-action="reset-password" data-id="${u.id}">임시 비밀번호 발급</button>
             <button class="btn btn-soft btn-sm danger" data-action="delete-user" data-id="${u.id}">삭제</button>`}</td>
-        </tr>`).join('') || '<tr><td colspan="9" class="muted">조건에 맞는 회원이 없습니다.</td></tr>';
+        </tr>`).join('') || '<tr><td colspan="10" class="muted">조건에 맞는 회원이 없습니다.</td></tr>';
   }
   function userFilter() {
     const all = Store.users();
@@ -690,6 +699,22 @@
       </label>
       <div class="pills user-filter">${tabs.map(([k, l]) =>
         `<button type="button" class="pill ${state.userRole === k ? 'on' : ''}" data-action="user-role" data-role="${k}">${l} ${k === '전체' ? all.length : all.filter(u => u.role === k).length}</button>`).join('')}</div>`;
+  }
+
+  // 사장님 가입 승인 방식: 이후 새 가입을 즉시 승인하거나 관리자 확인 후 승인
+  function ownerSignupModePanel() {
+    const auto = Store.ownerSignupAutoApprove();
+    return `<div class="trial-panel approval-mode">
+      <p><b>사장님 가입 승인 방식</b> <span class="badge ${auto ? 'badge-ok' : 'badge-wait'}">${auto ? '가입 즉시 승인' : '관리자 승인 후 이용'}</span></p>
+      <div class="trial-actions">
+        <button type="button" class="btn btn-sm ${auto ? 'btn-soft' : 'btn-dark'}" data-action="set-owner-signup-auto-approve" data-on="" aria-pressed="${!auto}">관리자 승인 필요</button>
+        <button type="button" class="btn btn-sm ${auto ? 'btn-dark' : 'btn-soft'}" data-action="set-owner-signup-auto-approve" data-on="on" aria-pressed="${auto}">승인 없이 바로 가입</button>
+      </div>
+      <p class="note">${auto
+        ? '새로 가입하는 사장님 계정은 즉시 승인되어 바로 로그인할 수 있습니다.'
+        : '새로 가입하는 사장님 계정은 승인 대기로 등록되며, 아래 회원 목록에서 승인해야 로그인할 수 있습니다.'}
+        바꾼 방식은 이후 새 가입부터 적용되며, 현재 대기 중인 계정은 직접 승인해 주세요.</p>
+    </div>`;
   }
 
   // 모집글 승인 방식: 승인받기(기본) / 승인 없이 바로 게시. 누르면 바로 반영
@@ -711,13 +736,14 @@
   function admin(tab) {
     if (tab) state.adminTab = tab;
     const pending = Store.campaigns().filter(c => c.approval === 'pending').length;
-    const tabs = [['apps', '신청·선정 현황'], ['campaigns', '모집글' + (pending ? ` (승인 대기 ${pending})` : '')], ['users', '회원'], ['site', '사이트 설정']];
+    const pendingOwners = Store.users().filter(u => u.role === 'owner' && !u.ownerApproved).length;
+    const tabs = [['apps', '신청·선정 현황'], ['campaigns', '모집글' + (pending ? ` (승인 대기 ${pending})` : '')], ['users', '회원' + (pendingOwners ? ` (가입 대기 ${pendingOwners})` : '')], ['site', '사이트 설정']];
     let body = '';
     if (state.adminTab === 'site') {
       body = siteSettings();
     } else if (state.adminTab === 'users') {
-      body = `${userFilter()}<div class="table-wrap"><table>
-        <thead><tr><th>유형</th>${sortHead('name', '이름')}<th>아이디</th><th>연락처</th><th>SNS 채널 / 매장명</th>${sortHead('count', '공고 참여 · 등록')}${sortHead('createdAt', '가입일')}<th>요금제 (계좌이체 확인 후 지정)</th><th></th></tr></thead>
+      body = `${ownerSignupModePanel()}${userFilter()}<div class="table-wrap"><table>
+        <thead><tr><th>유형</th><th>가입 상태</th>${sortHead('name', '이름')}<th>아이디</th><th>연락처</th><th>SNS 채널 / 매장명</th>${sortHead('count', '공고 참여 · 등록')}${sortHead('createdAt', '가입일')}<th>요금제 (계좌이체 확인 후 지정)</th><th></th></tr></thead>
         <tbody id="user-rows">${userRows()}</tbody></table></div>`;
     } else if (state.adminTab === 'campaigns') {
       body = `${approvalModePanel()}<div class="table-wrap"><table>
@@ -1378,6 +1404,17 @@
       toast(on ? '이제 모집글이 승인 없이 바로 게시됩니다.' : '이제 모집글은 관리자 승인 후 게시됩니다.');
       refresh();
     },
+    'set-owner-signup-auto-approve': async el => {
+      if (!isAdmin()) return toast('권한이 없습니다.');
+      const on = el.dataset.on === 'on';
+      if (on === Store.ownerSignupAutoApprove()) return;
+      if (!confirm(on
+        ? '새 사장님 계정을 가입 즉시 승인할까요?\n이후 가입자는 바로 로그인할 수 있습니다.'
+        : '새 사장님 계정을 관리자 승인 후 이용하도록 바꿀까요?\n이후 가입자는 회원 목록에서 승인할 때까지 로그인할 수 없습니다.')) return;
+      await Store.saveSettings({ ownerSignupAutoApprove: on ? 'on' : '' });
+      toast(on ? '이제 새 사장님 계정이 가입 즉시 승인됩니다.' : '이제 새 사장님 계정은 관리자 승인 후 이용할 수 있습니다.');
+      refresh();
+    },
     'toggle-campaign': async el => {
       if (!isAdmin()) return;
       const c = Store.campaign(el.dataset.id);
@@ -1399,6 +1436,18 @@
       if (!confirm('이 회원을 삭제할까요?\n해당 회원의 모집글과 신청 내역도 함께 삭제됩니다.')) return;
       await Store.deleteUser(el.dataset.id);
       toast('회원을 삭제했습니다.');
+      refresh();
+    },
+    'set-owner-approval': async el => {
+      if (!isAdmin()) return toast('권한이 없습니다.');
+      const u = Store.user(el.dataset.id);
+      const approved = el.dataset.approved === 'true';
+      if (!u || u.role !== 'owner') return toast('사장님 계정을 찾을 수 없습니다.');
+      if (!confirm(approved
+        ? `${u.name}님(${u.storeName || '매장명 없음'})의 가입을 승인할까요?\n승인 후 바로 로그인할 수 있습니다.`
+        : `${u.name}님(${u.storeName || '매장명 없음'})의 승인을 취소할까요?\n로그인과 사장님 관리 기능이 즉시 제한됩니다. 기존 모집글은 사이트에 남습니다.`)) return;
+      await Store.setOwnerApproval(u.id, approved);
+      toast(approved ? '사장님 가입을 승인했습니다.' : '사장님 승인을 취소했습니다.');
       refresh();
     },
     'admin-tab': el => go('/admin/' + el.dataset.tab),
@@ -1527,6 +1576,12 @@
         role, name: f.name.value, username: f.username.value, password: f.password.value, phone: f.phone.value,
         snsType: f.snsType.value, snsUrl: f.snsUrl.value, storeName: f.storeName.value
       });
+      if (u && u.pendingApproval) {
+        state.afterLogin = null;
+        go('/login');
+        showModal('가입 신청 완료', '<p>사장님 계정이 승인 대기로 등록되었습니다.</p><p class="note">관리자가 승인한 뒤 로그인해 주세요.</p>');
+        return;
+      }
       finishLogin(u);
     },
     settings: async f => {

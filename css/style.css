@@ -204,6 +204,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .form .check a { text-decoration: underline; }
 .form .only-influencer, .form .only-owner { display: grid; gap: 16px; }
 .form[data-role=influencer] .only-owner, .form[data-role=owner] .only-influencer { display: none; }
+.form .signup-approval-note { margin-top: -8px; }
 .role-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .role-switch input { position: absolute; opacity: 0; }
 .role-switch span { display: block; border: 1.5px solid var(--line); border-radius: 12px; padding: 14px; text-align: center; font-size: 15.5px; cursor: pointer; }
